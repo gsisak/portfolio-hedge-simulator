@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import ForecastMatrixTable from "@/components/ForecastMatrix";
 import VoicePortfolioInput from "@/components/VoicePortfolioInput";
 import type { HoldingInput } from "@/lib/fund-registry";
 import { FUND_LABELS } from "@/lib/fund-registry";
+import { INVESTMENT_STRATEGIES, type StrategyId } from "@/lib/strategies";
 import type {
   PortfolioMixSlice,
   ShortInterestRow,
@@ -32,6 +34,7 @@ export default function Dashboard() {
   const [holdings, setHoldings] = useState<HoldingInput[]>(DEFAULT_HOLDINGS);
   const [cash, setCash] = useState("0");
   const [forecastYears, setForecastYears] = useState(5);
+  const [strategyId, setStrategyId] = useState<StrategyId>("buy_and_hold");
   const [results, setResults] = useState<SimulationResult[]>([]);
   const [portfolioMix, setPortfolioMix] = useState<PortfolioMixSlice[]>([]);
   const [shorts, setShorts] = useState<ShortInterestRow[]>([]);
@@ -71,6 +74,7 @@ export default function Dashboard() {
             cash: Number(c) || 0,
             fetchPrices: true,
             forecastYears,
+            strategyId,
           }),
         });
         const data = await res.json();
@@ -90,13 +94,13 @@ export default function Dashboard() {
         setLoading(false);
       }
     },
-    [holdings, cash, forecastYears],
+    [holdings, cash, forecastYears, strategyId],
   );
 
   useEffect(() => {
     runSimulation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [forecastYears, strategyId]);
 
   const activeResult = results.find((r) => r.scenario.id === selectedScenario);
 
@@ -266,6 +270,23 @@ export default function Dashboard() {
                     ))}
                   </select>
                 </label>
+                <label className="mt-4 block">
+                  <span className="text-xs text-zinc-400">Investment strategy</span>
+                  <select
+                    value={strategyId}
+                    onChange={(e) => setStrategyId(e.target.value as StrategyId)}
+                    className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm"
+                  >
+                    {INVESTMENT_STRATEGIES.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[10px] text-zinc-500">
+                    {INVESTMENT_STRATEGIES.find((s) => s.id === strategyId)?.description}
+                  </p>
+                </label>
                 <button
                   type="button"
                   onClick={() => runSimulation()}
@@ -351,6 +372,9 @@ export default function Dashboard() {
                     <p className="mt-1 text-sm text-zinc-400">
                       {activeResult.scenario.description}
                     </p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Strategy: {activeResult.strategyName}
+                    </p>
                     <div className="mt-4 grid gap-4 sm:grid-cols-3">
                       <Metric label="Start Value" value={formatUsd(activeResult.startValue)} />
                       <Metric
@@ -366,9 +390,16 @@ export default function Dashboard() {
                     </div>
                   </section>
 
+                  {activeResult.forecastMatrix && (
+                    <ForecastMatrixTable
+                      matrix={activeResult.forecastMatrix}
+                      strategyName={activeResult.strategyName}
+                    />
+                  )}
+
                   <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
                     <h3 className="border-b border-zinc-800 px-4 py-3 text-sm font-semibold text-zinc-300">
-                      Multi-Year Forecast
+                      Portfolio Total by Year
                     </h3>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">

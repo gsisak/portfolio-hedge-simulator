@@ -4,12 +4,15 @@ import { SCENARIOS, getScenario } from "@/lib/scenarios";
 import { simulateAllScenarios, simulatePortfolio } from "@/lib/simulator";
 import type { Portfolio } from "@/lib/types";
 
+import type { StrategyId } from "@/lib/strategies";
+
 interface SimulateRequest {
   holdings: Array<{ symbol: string; shares: number }>;
   cash?: number;
   scenarioId?: string;
   fetchPrices?: boolean;
   forecastYears?: number;
+  strategyId?: StrategyId;
 }
 
 export async function POST(request: Request) {
@@ -46,11 +49,21 @@ export async function POST(request: Request) {
           { status: 400 },
         );
       }
-      const result = simulatePortfolio(portfolio, scenario, forecastYears);
+      const result = simulatePortfolio(
+        portfolio,
+        scenario,
+        forecastYears,
+        body.strategyId,
+      );
       return NextResponse.json({ result, meta: { priceMeta, analyses, forecastYears } });
     }
 
-    const results = simulateAllScenarios(portfolio, SCENARIOS, forecastYears);
+    const results = simulateAllScenarios(
+      portfolio,
+      SCENARIOS,
+      forecastYears,
+      body.strategyId,
+    );
     const portfolioValue = results[0]?.startValue ?? 0;
     const fallbackCount = priceMeta.filter((p) => !p.live).length;
 

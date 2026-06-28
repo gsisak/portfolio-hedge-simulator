@@ -14,9 +14,18 @@ const ALIAS_ENTRIES = getAllAliasEntries().sort(
 
 const TICKER_WORD_BLOCKLIST = new Set([
   "I", "A", "AN", "THE", "OF", "IN", "MY", "AND", "OR", "TO", "AT", "IS", "IT",
-  "SHARE", "SHARES", "DOLLAR", "DOLLARS", "WORTH", "ABOUT", "ROUGHLY", "HAVE",
-  "OWN", "WITH", "FOR", "USD", "K", "M",
+  "SHARE", "SHARES", "SCARE", "SCARES", "DOLLAR", "DOLLARS", "WORTH", "ABOUT",
+  "ROUGHLY", "HAVE", "OWN", "WITH", "FOR", "USD", "K", "M", "OK", "UB", "LD",
+  "LX", "TR", "UNIT", "FONT", "FUND", "FUNDS",
 ]);
+
+/** Strip thousand-separators so "$370,963" and "87,788" parse reliably */
+function normalizeNumberCommas(text: string): string {
+  return text.replace(/(\d),(\d{3}(?:,\d{3})*(?:\.\d+)?)/g, (_, left, right) => {
+    const combined = left + right.replace(/,/g, "");
+    return combined;
+  });
+}
 
 function normalize(text: string): string {
   return text
@@ -27,14 +36,18 @@ function normalize(text: string): string {
 }
 
 function splitSegments(transcript: string): string[] {
-  return transcript
-    .split(/\s+(?:and|also|plus|then)\s+|,\s*|\.\s+|\n+/i)
+  const cleaned = normalizeNumberCommas(transcript);
+
+  return cleaned
+    .split(
+      /\b(?:ok|and then|i also have|also have|plus|then)\b|\.\s+|\n+|;\s*/i,
+    )
     .map((s) => s.trim())
     .filter((s) => s.length > 3);
 }
 
 function parseDollars(segment: string): number | undefined {
-  const normalized = segment.toLowerCase();
+  const normalized = normalizeNumberCommas(segment).toLowerCase();
 
   const dollarSign = normalized.match(
     /\$\s*([\d,]+(?:\.\d+)?)\s*(k|thousand|m|million|b|billion)?/,
@@ -48,6 +61,13 @@ function parseDollars(segment: string): number | undefined {
   );
   if (dollarsWord) {
     return scaleNumber(parseFloat(dollarsWord[1].replace(/,/g, "")), dollarsWord[2]);
+  }
+
+  const inAmount = normalized.match(
+    /(?:about|roughly|around|have|that's|at)\s+\$?\s*([\d,]+(?:\.\d+)?)\s*(k|thousand|m|million)?/,
+  );
+  if (inAmount) {
+    return scaleNumber(parseFloat(inAmount[1].replace(/,/g, "")), inAmount[2]);
   }
 
   const worth = normalized.match(/worth\s+(?:about\s+)?([\d,]+(?:\.\d+)?)\s*(k|thousand|m|million)?/);
@@ -78,14 +98,14 @@ function scaleNumber(n: number, suffix?: string): number {
 }
 
 function parseShares(segment: string): number | undefined {
-  const m = segment.match(/([\d,]+(?:\.\d+)?)\s+shares?/i);
+  const m = segment.match(/([\d,]+(?:\.\d+)?)\s+scare?s?/i);
   if (m) return parseFloat(m[1].replace(/,/g, ""));
   return undefined;
 }
 
 function matchTicker(segment: string): { symbol: string; label: string } | null {
   const upper = segment.toUpperCase();
-  const tickers = upper.match(/\b[A-Z]{1,5}\b/g) ?? [];
+  const tickers = upper.match(/\b[A-Z]{2,5}\b/g) ?? [];
   for (const t of tickers) {
     if (!TICKER_WORD_BLOCKLIST.has(t)) {
       const entry = ALIAS_ENTRIES.find((a) => a.symbol === t);
@@ -138,6 +158,50 @@ export function parseVoiceTranscript(transcript: string): ParsedHoldingDraft[] {
       shares,
       dollars,
       rawSegment: segment,
+    });
+  }
+
+  return results;
+}
+
+function extractSearchQuery(segment: string): string {
+  return segment
+    .replace(/\$\s*[\d,]+(?:\.\d+)?\s*(?:k|thousand|m|million|b|billion)?/gi, "")
+    .replace(/[\d,]+(?:\.\d+)?\s*(?:k|thousand|m|million|b|billion)?\s*(?:dollars?|usd)/gi, "")
+    .replace(/[\d,]+(?:\.\d+)?\s+scare?s?/gi, "")
+    .replace(/\b(?:worth|about|roughly|around|have|own|in|of|my|portfolio|ok|vanguard|fund|funds|font|called|which is a|there's|that's|i also|then)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export interface VoiceSegment {
+  rawSegment: string;
+  shares?: number;
+  dollars?: number;
+  searchQuery: string;
+  localMatch?: { symbol: string; label: string };
+}
+
+export function parseVoiceSegments(transcript: string): VoiceSegment[] {
+  const segments = splitSegments(transcript);
+  const results: VoiceSegment[] = [];
+
+  for (const segment of segments) {
+    const shares = parseShares(segment);
+    const dollars = parseDollars(segment);
+    if (!shares && !dollars) continue;
+
+    const searchQuery = extractSearchQuery(segment) || segment;
+    const tickerMatch = matchTicker(segment);
+    const fundMatch = matchFundName(segment);
+    const localMatch = tickerMatch ?? fundMatch ?? undefined;
+
+    results.push({
+      rawSegment: segment,
+      shares,
+      dollars,
+      searchQuery: searchQuery.length > 2 ? searchQuery : segment,
+      localMatch,
     });
   }
 

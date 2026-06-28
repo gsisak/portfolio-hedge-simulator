@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HoldingInput } from "@/lib/fund-registry";
+import type { VoiceParseItem } from "@/lib/types";
 
 interface SpeechRecognitionResultLike {
   isFinal: boolean;
@@ -29,13 +30,6 @@ type SpeechWindow = Window & {
   webkitSpeechRecognition?: new () => SpeechRecognitionLike;
 };
 
-interface ParsedPreview {
-  symbol: string;
-  shares: number;
-  matchedLabel: string;
-  source: string;
-}
-
 interface VoicePortfolioInputProps {
   onApply: (holdings: HoldingInput[], cash: string) => void | Promise<void>;
 }
@@ -46,7 +40,7 @@ export default function VoicePortfolioInput({ onApply }: VoicePortfolioInputProp
   const [transcript, setTranscript] = useState("");
   const [interim, setInterim] = useState("");
   const [parsing, setParsing] = useState(false);
-  const [preview, setPreview] = useState<ParsedPreview[]>([]);
+  const [items, setItems] = useState<VoiceParseItem[]>([]);
   const [previewCash, setPreviewCash] = useState("0");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +101,14 @@ export default function VoicePortfolioInput({ onApply }: VoicePortfolioInputProp
     }
   }, [listening]);
 
+  const selectRecommendation = (itemId: string, symbol: string) => {
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId ? { ...item, selectedSymbol: symbol } : item,
+      ),
+    );
+  };
+
   const parseTranscript = useCallback(async () => {
     const text = transcript.trim();
     if (!text) {
@@ -127,15 +129,17 @@ export default function VoicePortfolioInput({ onApply }: VoicePortfolioInputProp
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Parse failed");
 
-      if (!data.holdings?.length) {
-        setPreview([]);
+      if (!data.items?.length) {
+        setItems([]);
         setMessage(data.message ?? "No holdings matched");
         return;
       }
 
-      setPreview(data.holdings);
+      setItems(data.items);
       setPreviewCash(String(data.cash ?? 0));
-      setMessage(`Matched ${data.holdings.length} holding(s)`);
+      setMessage(
+        `Found ${data.items.length} holding(s) — pick the best ticker match for each`,
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Parse failed");
     } finally {
@@ -144,16 +148,37 @@ export default function VoicePortfolioInput({ onApply }: VoicePortfolioInputProp
   }, [transcript]);
 
   const applyPreview = useCallback(async () => {
-    if (!preview.length) return;
-    await onApply(
-      preview.map((h) => ({
-        symbol: h.symbol,
-        shares: String(h.shares),
-      })),
-      previewCash,
-    );
+    if (!items.length) return;
+
+    const holdings: HoldingInput[] = [];
+    for (const item of items) {
+      if (!item.selectedSymbol) continue;
+      const rec = item.recommendations.find(
+        (r) => r.symbol === item.selectedSymbol,
+      );
+      const price = rec?.price ?? undefined;
+      let shares = item.shares;
+
+      if (shares === undefined && item.dollars !== undefined && price && price > 0) {
+        shares = Math.round((item.dollars / price) * 100) / 100;
+      }
+
+      if (shares && shares > 0) {
+        holdings.push({
+          symbol: item.selectedSymbol,
+          shares: String(shares),
+        });
+      }
+    }
+
+    if (!holdings.length) {
+      setError("Select a ticker for each holding with a valid share/dollar amount");
+      return;
+    }
+
+    await onApply(holdings, previewCash);
     setMessage("Portfolio updated — running scenarios…");
-  }, [preview, previewCash, onApply]);
+  }, [items, previewCash, onApply]);
 
   if (!supported) {
     return (
@@ -183,8 +208,9 @@ export default function VoicePortfolioInput({ onApply }: VoicePortfolioInputProp
       </div>
 
       <p className="mt-2 text-xs text-zinc-500">
-        Example: &quot;288 thousand in target retirement 2025, 500 shares of VOO, $215,000
-        in total bond BND&quot;
+        Describe funds in plain English — we search Yahoo Finance and suggest
+        tickers. Example: &quot;$621,000 in institutional 500 index&quot; or
+        &quot;530k total bond market&quot;
       </p>
 
       <textarea
@@ -202,9 +228,9 @@ export default function VoicePortfolioInput({ onApply }: VoicePortfolioInputProp
           disabled={parsing || !transcript.trim()}
           className="flex-1 rounded-md bg-zinc-700 py-1.5 text-xs font-medium text-white hover:bg-zinc-600 disabled:opacity-50"
         >
-          {parsing ? "Matching tickers…" : "Find tickers & shares"}
+          {parsing ? "Searching funds…" : "Search & match funds"}
         </button>
-        {preview.length > 0 && (
+        {items.length > 0 && (
           <button
             type="button"
             onClick={applyPreview}
@@ -218,20 +244,56 @@ export default function VoicePortfolioInput({ onApply }: VoicePortfolioInputProp
       {message && <p className="mt-2 text-xs text-emerald-400">{message}</p>}
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
 
-      {preview.length > 0 && (
-        <ul className="mt-2 space-y-1 border-t border-zinc-700 pt-2">
-          {preview.map((h) => (
-            <li key={h.symbol} className="flex justify-between text-xs text-zinc-400">
-              <span>
-                <span className="font-mono font-medium text-zinc-200">{h.symbol}</span>{" "}
-                — {h.matchedLabel}
-              </span>
-              <span>
-                {h.shares} sh ({h.source})
-              </span>
-            </li>
+      {items.length > 0 && (
+        <div className="mt-3 space-y-3 border-t border-zinc-700 pt-3">
+          {items.map((item) => (
+            <div
+              key={item.id}
+              className="rounded-md border border-zinc-700/80 bg-zinc-900/50 p-2.5"
+            >
+              <p className="text-xs text-zinc-400">
+                &quot;{item.rawSegment}&quot;
+                {item.dollars !== undefined && (
+                  <span className="ml-2 text-zinc-500">
+                    ${item.dollars.toLocaleString()}
+                  </span>
+                )}
+                {item.shares !== undefined && (
+                  <span className="ml-2 text-zinc-500">{item.shares} shares</span>
+                )}
+              </p>
+              <p className="mt-1.5 text-[10px] uppercase tracking-wide text-zinc-600">
+                Pick best match
+              </p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {item.recommendations.map((rec) => {
+                  const selected = item.selectedSymbol === rec.symbol;
+                  return (
+                    <button
+                      key={rec.symbol}
+                      type="button"
+                      onClick={() => selectRecommendation(item.id, rec.symbol)}
+                      className={`rounded-md border px-2 py-1 text-left text-xs transition ${
+                        selected
+                          ? "border-emerald-600 bg-emerald-900/40 text-emerald-200"
+                          : "border-zinc-700 bg-zinc-800/60 text-zinc-300 hover:border-zinc-600"
+                      }`}
+                      title={rec.reason}
+                    >
+                      <span className="font-mono font-semibold">{rec.symbol}</span>
+                      <span className="ml-1 text-zinc-500">
+                        {(rec.confidence * 100).toFixed(0)}%
+                      </span>
+                      <span className="block max-w-[180px] truncate text-[10px] text-zinc-500">
+                        {rec.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );

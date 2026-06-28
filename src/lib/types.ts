@@ -67,6 +67,24 @@ export interface ScenarioShock {
   tickerShocks?: Record<string, number>;
 }
 
+export interface YearlyPositionDetail {
+  year: number;
+  label: string;
+  startValue: number;
+  endValue: number;
+  shockPercent: number;
+  changeUsd: number;
+  explanation: string;
+  bucketBreakdown: Array<{
+    bucket: ExposureBucket;
+    label: string;
+    weight: number;
+    bucketShock: number;
+    contribution: number;
+  }>;
+  strategyNote?: string;
+}
+
 export interface PositionResult {
   symbol: string;
   shares: number;
@@ -79,6 +97,20 @@ export interface PositionResult {
   exposure: ExposureProfile;
   exposureLabel: string;
   yearlyValues?: number[];
+  yearlyDetails?: YearlyPositionDetail[];
+}
+
+export interface ForecastMatrixRow {
+  symbol: string;
+  label: string;
+  values: number[];
+  yearlyDetails?: YearlyPositionDetail[];
+  isTotal?: boolean;
+}
+
+export interface ForecastMatrix {
+  yearLabels: string[];
+  rows: ForecastMatrixRow[];
 }
 
 export interface ForecastPoint {
@@ -92,6 +124,8 @@ export interface ForecastPoint {
 export interface SimulationResult {
   scenario: ScenarioShock;
   forecastYears: number;
+  strategyId: string;
+  strategyName: string;
   startValue: number;
   endValue: number;
   pnl: number;
@@ -100,6 +134,26 @@ export interface SimulationResult {
   hedges: HedgeRecommendation[];
   forecast: ForecastPoint[];
   portfolioMix: PortfolioMixSlice[];
+  forecastMatrix: ForecastMatrix;
+}
+
+export interface FundRecommendation {
+  symbol: string;
+  name: string;
+  quoteType?: string;
+  source: string;
+  confidence: number;
+  reason: string;
+  price?: number | null;
+}
+
+export interface VoiceParseItem {
+  id: string;
+  rawSegment: string;
+  dollars?: number;
+  shares?: number;
+  recommendations: FundRecommendation[];
+  selectedSymbol?: string;
 }
 
 export interface PortfolioMixSlice {
