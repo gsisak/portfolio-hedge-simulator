@@ -203,9 +203,9 @@ export default function Dashboard() {
         </div>
 
         {tab === "simulate" ? (
-          <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
-            <aside className="space-y-4">
-              <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+          <div className="grid gap-6 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
+            <aside className="min-w-0 space-y-4 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
+              <section className="min-w-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
                 <h2 className="mb-3 text-sm font-semibold text-zinc-300">
                   Your Portfolio
                 </h2>
@@ -361,7 +361,7 @@ export default function Dashboard() {
               )}
             </aside>
 
-            <main className="space-y-4">
+            <main className="min-w-0 space-y-4">
               {loading && results.length === 0 ? (
                 <div className="flex min-h-[400px] items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900/50 p-8 text-center">
                   <p className="text-lg font-medium text-zinc-300">

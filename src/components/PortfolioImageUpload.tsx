@@ -125,6 +125,30 @@ export default function PortfolioImageUpload({ onApply }: PortfolioImageUploadPr
     );
   };
 
+  const deselectRecommendation = (itemId: string) => {
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId ? { ...item, selectedSymbol: undefined } : item,
+      ),
+    );
+  };
+
+  const excludeItem = (itemId: string) => {
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId ? { ...item, excluded: true } : item,
+      ),
+    );
+  };
+
+  const restoreItem = (itemId: string) => {
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId ? { ...item, excluded: false } : item,
+      ),
+    );
+  };
+
   const applyPreview = useCallback(async () => {
     const holdings = itemsToHoldings(items);
     if (!holdings.length) {
@@ -238,7 +262,13 @@ export default function PortfolioImageUpload({ onApply }: PortfolioImageUploadPr
       {message && <p className="mt-2 text-xs text-emerald-400">{message}</p>}
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
 
-      <ParseItemsPreview items={items} onSelect={selectRecommendation} />
+      <ParseItemsPreview
+        items={items}
+        onSelect={selectRecommendation}
+        onDeselect={deselectRecommendation}
+        onExclude={excludeItem}
+        onRestore={restoreItem}
+      />
     </div>
   );
 }

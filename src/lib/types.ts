@@ -154,6 +154,8 @@ export interface VoiceParseItem {
   shares?: number;
   recommendations: FundRecommendation[];
   selectedSymbol?: string;
+  /** Client-side: excluded from Apply to portfolio */
+  excluded?: boolean;
 }
 
 export interface PortfolioMixSlice {

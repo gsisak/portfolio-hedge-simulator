@@ -15,18 +15,87 @@ function parseCashFromTranscript(transcript: string): number {
   return num;
 }
 
-function mergeSegments(segments: VoiceSegment[]): VoiceSegment[] {
-  const seen = new Set<string>();
-  const merged: VoiceSegment[] = [];
+function segmentDedupeKey(seg: VoiceSegment): string {
+  if (seg.localMatch?.symbol) return `sym:${seg.localMatch.symbol}`;
+  return `raw:${seg.rawSegment.slice(0, 80).toLowerCase()}`;
+}
+
+/** Merge segments that refer to the same fund; combine amounts when both are present */
+export function dedupeSegmentsBySymbol(segments: VoiceSegment[]): VoiceSegment[] {
+  const byKey = new Map<string, VoiceSegment>();
 
   for (const seg of segments) {
-    const key = `${seg.shares ?? ""}|${seg.dollars ?? ""}|${seg.rawSegment.slice(0, 80)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push(seg);
+    const key = segmentDedupeKey(seg);
+    const existing = byKey.get(key);
+
+    if (!existing) {
+      byKey.set(key, { ...seg });
+      continue;
+    }
+
+    if (seg.shares !== undefined && existing.shares === undefined) {
+      existing.shares = seg.shares;
+    }
+    if (seg.dollars !== undefined && existing.dollars === undefined) {
+      existing.dollars = seg.dollars;
+    }
+    if (!existing.localMatch && seg.localMatch) {
+      existing.localMatch = seg.localMatch;
+    }
+    if (seg.rawSegment.length > existing.rawSegment.length) {
+      existing.rawSegment = seg.rawSegment;
+    }
+    if (seg.searchQuery.length > existing.searchQuery.length) {
+      existing.searchQuery = seg.searchQuery;
+    }
   }
 
-  return merged;
+  return [...byKey.values()];
+}
+
+/** Collapse parse items that resolve to the same ticker */
+export function dedupeParseItems(items: VoiceParseItem[]): VoiceParseItem[] {
+  const unmatched: VoiceParseItem[] = [];
+  const bySymbol = new Map<string, VoiceParseItem>();
+
+  for (const item of items) {
+    const symbol = item.selectedSymbol ?? item.recommendations[0]?.symbol;
+    if (!symbol) {
+      unmatched.push(item);
+      continue;
+    }
+
+    const existing = bySymbol.get(symbol);
+    if (!existing) {
+      bySymbol.set(symbol, { ...item, selectedSymbol: symbol });
+      continue;
+    }
+
+    const shares =
+      existing.shares !== undefined || item.shares !== undefined
+        ? Math.max(existing.shares ?? 0, item.shares ?? 0)
+        : undefined;
+    const dollars =
+      existing.dollars !== undefined || item.dollars !== undefined
+        ? Math.max(existing.dollars ?? 0, item.dollars ?? 0)
+        : undefined;
+
+    bySymbol.set(symbol, {
+      ...existing,
+      shares: shares && shares > 0 ? shares : undefined,
+      dollars: dollars && dollars > 0 ? dollars : undefined,
+      rawSegment:
+        item.rawSegment.length > existing.rawSegment.length
+          ? item.rawSegment
+          : existing.rawSegment,
+      recommendations:
+        existing.recommendations.length >= item.recommendations.length
+          ? existing.recommendations
+          : item.recommendations,
+    });
+  }
+
+  return [...Array.from(bySymbol.values()), ...unmatched];
 }
 
 export async function segmentsToParseItems(
@@ -69,20 +138,25 @@ export async function segmentsToParseItems(
 export async function parseHoldingsFromText(
   transcript: string,
   extraSegments: VoiceSegment[] = [],
+  options?: { skipVoiceParse?: boolean },
 ): Promise<{
   items: VoiceParseItem[];
   cash: number;
   segmentCount: number;
 }> {
   const trimmed = transcript.trim();
-  const voiceSegments = trimmed ? parseVoiceSegments(trimmed) : [];
-  const segments = mergeSegments([...extraSegments, ...voiceSegments]);
+  const voiceSegments = options?.skipVoiceParse
+    ? []
+    : trimmed
+      ? parseVoiceSegments(trimmed)
+      : [];
+  const segments = dedupeSegmentsBySymbol([...extraSegments, ...voiceSegments]);
 
   if (segments.length === 0) {
     return { items: [], cash: parseCashFromTranscript(trimmed), segmentCount: 0 };
   }
 
-  const items = await segmentsToParseItems(segments);
+  const items = dedupeParseItems(await segmentsToParseItems(segments));
   return {
     items,
     cash: parseCashFromTranscript(trimmed),

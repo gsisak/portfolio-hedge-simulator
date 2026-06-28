@@ -1,5 +1,6 @@
 import { getAllAliasEntries } from "./fund-registry";
-import { parseVoiceSegments, type VoiceSegment } from "./voice-parser";
+import { dedupeSegmentsBySymbol } from "./parse-holdings";
+import type { VoiceSegment } from "./voice-parser";
 
 const ALIAS_ENTRIES = getAllAliasEntries().sort(
   (a, b) => b.alias.length - a.alias.length,
@@ -9,16 +10,6 @@ const TICKER_BLOCKLIST = new Set([
   "THE", "AND", "FOR", "USD", "INC", "LLC", "TR", "UB", "LX", "LD", "OK",
   "CIT", "FUND", "TRUST", "UNIT", "ADM", "ADMIRAL", "INST", "TOTAL", "VGI",
 ]);
-
-function normalizeOcrText(text: string): string {
-  return text
-    .replace(/\r/g, "\n")
-    .replace(/[|]/g, " ")
-    .replace(/(\d)[oO](\d)/g, "$1$2")
-    .replace(/(\d)[lI](\d)/g, "$1$2")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 function parseLineDollars(line: string): number | undefined {
   const m = line.match(/\$\s*([\d,]+(?:\.\d+)?)/);
@@ -106,9 +97,8 @@ function parseTableRow(line: string): VoiceSegment | null {
   };
 }
 
-/** Extract holdings from OCR text — table rows + voice-style segments merged */
+/** Extract holdings from OCR table rows (voice-style parsing runs in parse-holdings) */
 export function parseImageOcrText(ocrText: string): VoiceSegment[] {
-  const normalized = normalizeOcrText(ocrText);
   const lines = ocrText
     .split(/\n+/)
     .map((l) => l.trim())
@@ -120,23 +110,7 @@ export function parseImageOcrText(ocrText: string): VoiceSegment[] {
     if (row) fromLines.push(row);
   }
 
-  const fromVoice = normalized ? parseVoiceSegments(normalized) : [];
-
-  const seen = new Set<string>();
-  const merged: VoiceSegment[] = [];
-
-  for (const seg of [...fromLines, ...fromVoice]) {
-    const key = [
-      seg.localMatch?.symbol ?? seg.searchQuery.slice(0, 40),
-      seg.shares ?? "",
-      seg.dollars ?? "",
-    ].join("|");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push(seg);
-  }
-
-  return merged;
+  return dedupeSegmentsBySymbol(fromLines);
 }
 
 export async function extractTextWithOpenAIVision(
