@@ -64,10 +64,17 @@ function parseDollars(segment: string): number | undefined {
   }
 
   const inAmount = normalized.match(
-    /(?:about|roughly|around|have|that's|at)\s+\$?\s*([\d,]+(?:\.\d+)?)\s*(k|thousand|m|million)?/,
+    /(?:about|roughly|around|that's|at)\s+\$?\s*([\d,]+(?:\.\d+)?)\s*(k|thousand|m|million)?/,
   );
   if (inAmount) {
     return scaleNumber(parseFloat(inAmount[1].replace(/,/g, "")), inAmount[2]);
+  }
+
+  const haveAmount = normalized.match(
+    /(?:^|\s)have\s+\$?\s*([\d,]+(?:\.\d+)?)\s*(k|thousand|m|million)?(?!\s*(?:shares?|scares?))/,
+  );
+  if (haveAmount) {
+    return scaleNumber(parseFloat(haveAmount[1].replace(/,/g, "")), haveAmount[2]);
   }
 
   const worth = normalized.match(/worth\s+(?:about\s+)?([\d,]+(?:\.\d+)?)\s*(k|thousand|m|million)?/);
@@ -98,7 +105,7 @@ function scaleNumber(n: number, suffix?: string): number {
 }
 
 function parseShares(segment: string): number | undefined {
-  const m = segment.match(/([\d,]+(?:\.\d+)?)\s+scare?s?/i);
+  const m = segment.match(/([\d,]+(?:\.\d+)?)\s+(?:shares?|scares?)/i);
   if (m) return parseFloat(m[1].replace(/,/g, ""));
   return undefined;
 }

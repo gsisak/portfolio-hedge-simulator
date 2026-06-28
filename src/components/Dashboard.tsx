@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import ForecastMatrixTable from "@/components/ForecastMatrix";
+import PortfolioImageUpload from "@/components/PortfolioImageUpload";
 import VoicePortfolioInput from "@/components/VoicePortfolioInput";
 import type { HoldingInput } from "@/lib/fund-registry";
 import { FUND_LABELS } from "@/lib/fund-registry";
@@ -156,8 +157,8 @@ export default function Dashboard() {
           <h2 className="text-sm font-semibold text-emerald-300">How it works</h2>
           <ol className="mt-2 grid gap-2 text-sm text-zinc-400 sm:grid-cols-3">
             <li>
-              <span className="font-medium text-zinc-200">1. Enter holdings</span> — type
-              manually or use the microphone to describe funds and amounts
+              <span className="font-medium text-zinc-200">1. Enter holdings</span> — type,
+              speak, or upload a portfolio screenshot
             </li>
             <li>
               <span className="font-medium text-zinc-200">2. Apply scenario shocks</span> — a
@@ -210,6 +211,8 @@ export default function Dashboard() {
                 </h2>
 
                 <VoicePortfolioInput onApply={applyVoiceHoldings} />
+
+                <PortfolioImageUpload onApply={applyVoiceHoldings} />
 
                 <div className="space-y-2">
                   {holdings.map((h, i) => (
